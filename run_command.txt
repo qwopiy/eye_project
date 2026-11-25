@@ -1,0 +1,1 @@
+python scripts/05_runtime_udp.py --onnx models/mobilenetv3s_v1_96.onnx --landmarker face_landmarker.task --show
