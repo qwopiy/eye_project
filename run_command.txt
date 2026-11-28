@@ -1,8 +1,0 @@
-mobilenetv3s_v1_96
-python scripts/05_runtime_udp.py --onnx models/mobilenetv3s_v1_96.onnx --landmarker face_landmarker.task --show
-
-efficientnet_b0_v1_96
-python scripts/05_runtime_udp.py --onnx models/efficientnet_b0_v1_96.onnx --landmarker face_landmarker.task --show
-
-yolo
-python scripts/05_runtime_udp.py --onnx models/yolov8n_v1_96.onnx --landmarker face_landmarker.task --show
