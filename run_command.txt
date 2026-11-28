@@ -1,0 +1,8 @@
+mobilenetv3s_v1_112
+python scripts/05_runtime_head.py --onnx models/mobilenetv3s_v1_112.onnx --landmarker face_landmarker.task --show
+
+efficientnet_b0_v1_112.onnx
+python scripts/05_runtime_head.py --onnx models/efficientnet_b0_v1_112.onnx --landmarker face_landmarker.task --show
+
+yolov8n_v1_112.onnx
+python scripts/05_runtime_head.py --onnx models/yolov8n_v1_112.onnx --landmarker face_landmarker.task --show
