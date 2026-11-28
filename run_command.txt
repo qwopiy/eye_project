@@ -1,3 +1,6 @@
+pip install numpy pillow opencv-python onnxruntime mediapipe scipy
+pip install torch torchvision onnx ultralytics
+
 mobilenetv3s_v1_112
 python scripts/05_runtime_head.py --onnx models/mobilenetv3s_v1_112.onnx --landmarker face_landmarker.task --show
 
