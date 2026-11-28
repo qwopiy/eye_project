@@ -1,0 +1,11 @@
+{
+ "classes": [
+  "center",
+  "left",
+  "right",
+  "up",
+  "down"
+ ],
+ "arch": "mobilenetv3s",
+ "input_size": 112
+}

@@ -85,7 +85,48 @@ def export_torch(args):
     return ok
 
 
+def _to_probs(o):
+    """Keluaran modul YOLO (tensor atau tuple) -> vektor probabilitas float64."""
+    o = o[0] if isinstance(o, (list, tuple)) else o
+    v = o.detach().cpu().numpy().reshape(-1).astype(np.float64)
+    if abs(v.sum() - 1.0) < 1e-3 and v.min() >= -1e-6:
+        return v
+    e = np.exp(v - v.max())
+    return e / e.sum()
+
+
+def diagnose_yolo(sess, ref_model, net, paths):
+    """Dipanggil saat paritas GAGAL: membandingkan ONNX, modul PyTorch asli, dan predict() Ultralytics."""
+    import torch
+    name = sess.get_inputs()[0].name
+    worst = {"onnx vs modul": 0.0, "onnx(BGR) vs modul": 0.0, "predict() vs modul": 0.0}
+    agree = {"onnx": 0, "predict": 0}
+    for p in paths:
+        x = load_rgb01(p)
+        with torch.no_grad():
+            mod = _to_probs(net(torch.from_numpy(x)))
+        on = sess.run(None, {name: x})[0].reshape(-1)
+        on_bgr = sess.run(None, {name: np.ascontiguousarray(x[:, ::-1])})[0].reshape(-1)
+        pr = ref_model.predict(str(p), imgsz=IMG_SIZE, verbose=False)[0].probs.data.cpu().numpy()
+        worst["onnx vs modul"] = max(worst["onnx vs modul"], float(np.abs(on - mod).max()))
+        worst["onnx(BGR) vs modul"] = max(worst["onnx(BGR) vs modul"], float(np.abs(on_bgr - mod).max()))
+        worst["predict() vs modul"] = max(worst["predict() vs modul"], float(np.abs(pr - mod).max()))
+        agree["onnx"] += int(on.argmax() == mod.argmax())
+        agree["predict"] += int(pr.argmax() == mod.argmax())
+    print("--- diagnosis (selisih maksimum probabilitas pada %d gambar val) ---" % len(paths))
+    for k, v in worst.items():
+        print(f"  {k:20}: {v:.2e}")
+    print(f"  kelas tertinggi sama dengan modul: onnx {agree['onnx']}/{len(paths)}, predict() {agree['predict']}/{len(paths)}")
+    if worst["onnx vs modul"] < 1e-3:
+        print("  KESIMPULAN: ONNX sama dengan modul PyTorch. Yang berbeda adalah predict() Ultralytics (pra-pemrosesannya).")
+    elif worst["onnx(BGR) vs modul"] < 1e-3:
+        print("  KESIMPULAN: ONNX ternyata mengharapkan urutan BGR. Jangan dipakai begitu saja; kirim keluaran ini ke penyusun.")
+    else:
+        print("  KESIMPULAN: ONNX berbeda dari modul PyTorch: masalah di proses export. Coba: pip install -U ultralytics onnx, lalu ulangi.")
+
+
 def export_yolo(args):
+    import torch
     from ultralytics import YOLO
 
     w = Path(args.weights)
@@ -97,6 +138,13 @@ def export_yolo(args):
         w = cands[-1]
         print("Bobot ditemukan di:", w)
     m = YOLO(str(w))
+    try:
+        trained = int(m.ckpt["train_args"]["imgsz"])
+        print(f"model dilatih pada imgsz={trained}; export pada IMG_SIZE={IMG_SIZE}")
+        if trained != IMG_SIZE:
+            print(f"[PERINGATAN] ukuran latih ({trained}) berbeda dari IMG_SIZE ({IMG_SIZE}): latih ulang dengan --imgsz {IMG_SIZE}")
+    except Exception:
+        pass
     path = m.export(format="onnx", imgsz=IMG_SIZE, opset=17, simplify=True)
     out = Path(args.out)
     out.parent.mkdir(parents=True, exist_ok=True)
@@ -104,11 +152,21 @@ def export_yolo(args):
     classes = [m.names[i] for i in range(len(m.names))]  # urutan alfabet dari Ultralytics
     print("urutan kelas YOLO:", classes)
 
-    def ref_fn(p, x):
-        r = m.predict(str(p), imgsz=IMG_SIZE, verbose=False)[0]
-        return r.probs.data.cpu().numpy()
+    # Pembanding = modul PyTorch asli pada tensor yang SAMA dengan yang masuk ke ONNX (RGB 0-1).
+    # Dimuat ulang dari berkas karena export bisa mengubah objek m. Tidak lewat predict() Ultralytics,
+    # yang punya pra-pemrosesan sendiri (resize/crop) dan bisa berbeda dari input ONNX kita.
+    ref_model = YOLO(str(w))
+    net = ref_model.model.eval().float().cpu()
 
-    ok = check(ort.InferenceSession(str(out), providers=["CPUExecutionProvider"]), ref_fn, sample_images(args.data))
+    def ref_fn(p, x):
+        with torch.no_grad():
+            return _to_probs(net(torch.from_numpy(x)))
+
+    sess = ort.InferenceSession(str(out), providers=["CPUExecutionProvider"])
+    paths = sample_images(args.data)
+    ok = check(sess, ref_fn, paths)
+    if not ok:
+        diagnose_yolo(sess, ref_model, net, paths)
     json.dump({"classes": classes, "arch": "yolov8n-cls", "input_size": IMG_SIZE},
               open(out.with_suffix(".json"), "w"), indent=1)
     return ok

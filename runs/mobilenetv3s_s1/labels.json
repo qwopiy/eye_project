@@ -1,0 +1,12 @@
+{
+ "classes": [
+  "center",
+  "left",
+  "right",
+  "up",
+  "down"
+ ],
+ "arch": "mobilenetv3s",
+ "input_size": 112,
+ "best_val_f1": 0.8863283614059048
+}

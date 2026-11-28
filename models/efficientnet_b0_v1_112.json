@@ -1,0 +1,11 @@
+{
+ "classes": [
+  "center",
+  "left",
+  "right",
+  "up",
+  "down"
+ ],
+ "arch": "efficientnet_b0",
+ "input_size": 112
+}
